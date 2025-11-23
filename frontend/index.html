@@ -1,0 +1,132 @@
+<!doctype html>
+
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Tài Xỉu Online (Demo)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding:16px; max-width:600px; margin:auto; background:#f5f5f5; }
+  .card { background:#fff; border:1px solid #ddd; padding:12px; border-radius:8px; margin-bottom:12px; box-shadow:0 2px 6px rgba(0,0,0,0.05);}
+  .row { display:flex; gap:8px; margin-top:8px; }
+  button { padding:8px 12px; cursor:pointer; }
+  input { padding:6px; width:120px; }
+  .dice { font-weight:700; font-size:20px; }
+  .win { color:green; font-weight:bold; }
+  .lose { color:red; font-weight:bold; }
+</style>
+</head>
+<body>
+<h2>Tài Hay Cầu</h2>
+
+<div id="auth" class="card">
+  <div id="auth-forms">
+    <input id="username" placeholder="username">
+    <input id="password" type="password" placeholder="password">
+    <button id="btnRegister">Register</button>
+    <button id="btnLogin">Login</button>
+  </div>
+  <div id="profile" style="display:none;">
+    <div>Hi <span id="meName"></span> — Balance: <span id="meBal">0</span></div>
+    <button id="btnLogout">Logout</button>
+  </div>
+</div>
+
+<div id="game" class="card" style="display:none;">
+  <div>
+    <label>Số tiền cược: <input id="betAmt" type="number" value="10" min="1"></label>
+  </div>
+  <div class="row">
+    <button id="betTai">Cược TÀI</button>
+    <button id="betXiu">Cược XỈU</button>
+  </div>
+  <div id="result" style="margin-top:12px;"></div>
+  <h4>Lịch sử (gần nhất)</h4>
+  <div id="history"></div>
+</div>
+
+<script>
+const API_BASE = "https://okvip22.onrender.com";
+const tokenKey = "tx_demo_token";
+
+async function api(path, opts={}) {
+  const headers = opts.headers || {};
+  const t = localStorage.getItem(tokenKey);
+  if(t) headers['Authorization'] = "Bearer "+t;
+  headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+  const res = await fetch(API_BASE+path, {...opts, headers});
+  return res.json();
+}
+
+document.getElementById("btnRegister").onclick = async () => {
+  const u=document.getElementById("username").value.trim();
+  const p=document.getElementById("password").value;
+  if(!u||!p) return alert("Nhập username & password");
+  const r=await api("/api/auth/register",{method:"POST",body:JSON.stringify({username:u,password:p})});
+  if(r.token){localStorage.setItem(tokenKey,r.token);showProfile(r.username,r.balance); loadProfile();}
+  else alert(r.error||JSON.stringify(r));
+}
+
+document.getElementById("btnLogin").onclick = async () => {
+  const u=document.getElementById("username").value.trim();
+  const p=document.getElementById("password").value;
+  if(!u||!p) return alert("Nhập username & password");
+  const r=await api("/api/auth/login",{method:"POST",body:JSON.stringify({username:u,password:p})});
+  if(r.token){localStorage.setItem(tokenKey,r.token);showProfile(r.username,r.balance); loadProfile();}
+  else alert(r.error||JSON.stringify(r));
+}
+
+document.getElementById("btnLogout").onclick = () => {
+  localStorage.removeItem(tokenKey);
+  document.getElementById("profile").style.display="none";
+  document.getElementById("auth-forms").style.display="";
+  document.getElementById("game").style.display="none";
+}
+
+function showProfile(name,balance){
+  document.getElementById("meName").innerText=name;
+  document.getElementById("meBal").innerText=balance;
+  document.getElementById("profile").style.display="";
+  document.getElementById("auth-forms").style.display="none";
+  document.getElementById("game").style.display="";
+}
+
+async function loadProfile(){
+  const r=await api("/api/me");
+  if(r.username){showProfile(r.username,r.balance);renderHistory(r.lastBets||[]);}
+}
+
+async function placeBet(choice){
+  const amt=parseInt(document.getElementById("betAmt").value,10)||0;
+  if(amt<=0) return alert("Nhập số tiền hợp lệ");
+  const r=await api("/api/game/bet",{method:"POST",body:JSON.stringify({choice,amount:amt})});
+  if(r.error) return alert(r.error);
+  renderResult(r);
+  const me=await api("/api/me");
+  if(me.username) document.getElementById("meBal").innerText=me.balance;
+  if(me.lastBets) renderHistory(me.lastBets);
+}
+
+document.getElementById("betTai").onclick=()=>placeBet("tai");
+document.getElementById("betXiu").onclick=()=>placeBet("xiu");
+
+function renderResult(r){
+  const el=document.getElementById("result");
+  const cls=r.won?"win":"lose";
+  el.innerHTML=`<div>Dice: <span class="dice">${r.dice.join(" ")}</span> — Total: ${r.total} ${r.triple?"(TRIPLE)":""}</div><div class="${cls}">${r.won?"Bạn thắng!":"Bạn thua."}</div><div>Balance: ${r.balance}</div>`;
+}
+
+function renderHistory(arr){
+  const h=document.getElementById("history");
+  if(!arr||!arr.length){h.innerHTML="<small>Không có</small>";return;}
+  h.innerHTML=arr.slice(0,10).map(b=>{
+    const dt=new Date(b.createdAt).toLocaleString();
+    return `<div class="card"><div><strong>${b.choice.toUpperCase()}</strong> ${b.won?'<span class="win">WIN</span>':'<span class="lose">LOSE</span>'} — ${b.amount}</div><div>Dice: ${b.dice.join(" ")} (t=${b.total}) ${b.triple?"(TRIPLE)":""}</div><div style="font-size:12px;color:#666">${dt}</div></div>`;
+  }).join("");
+}
+
+if(localStorage.getItem(tokenKey)) loadProfile();
+</script>
+
+</body>
+</html>
